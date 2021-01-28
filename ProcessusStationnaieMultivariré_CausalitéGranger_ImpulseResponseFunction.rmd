@@ -1,0 +1,260 @@
+---
+title: "Devoir 6"
+author: Romain Veysseyre & Aurelien Witecki
+date: 20/10/2020
+output:
+    html_document:
+        df_print: paged
+        toc: true
+        toc_depth : 5
+        keep_md: true
+        code_folding: show
+        fig_width: 6.5
+        fig_height: 3
+---
+
+```{r Knitr_Global_Options, include=FALSE}
+library(knitr)
+opts_chunk$set(warning = FALSE, message = FALSE,
+               autodep = TRUE, tidy = FALSE,
+               cache = TRUE, fig.dim=c(6,3.7), fig.align = "left")
+#opts_chunk$set(cache.rebuild=TRUE)
+```
+
+```{r, include = FALSE}
+library(vars)
+library(sandwich)
+library(MASS)
+library(urca)
+library(vars)
+library(zoo)
+library(xts)
+library(knitr)
+library(astsa)
+library(Quandl)
+library(magrittr)
+library(kableExtra)
+library(dynlm)
+library(xtable)
+```
+# Etude préliminaire
+
+Téléchargement des données de notre étude, càd de la loi d'Okun :
+
+```{r}
+Quandl.api_key("bmsuXCiC2KdZZXi4sHe2")
+growth <- 100*Quandl("FRED/GDPC1", transform = "rdiff",
+                 start_date="1955-01-01", end_date="2007-12-31",
+                 collapse="quarterly", type="ts")
+dunrate <- Quandl("FRED/UNRATE", transform="diff",
+                  start_date="1955-01-01", end_date="2007-12-31",
+                  collapse="quarterly", type="ts")
+```
+
+On étudie le comportement de nos deux séries pour avoir une première vision globale de leur comportement et notamment pour inspecter leur possible non-stationnaritée :
+
+```{r}
+plot.ts(ts.intersect(growth,dunrate),main="")
+```
+Malgrè une variance assez importante, les deux séries semblent globalement sationnaires autour d'une moyenne de 0.
+
+On appronfondie notre analyse en inspectant les graphes d'autocorrélations :
+
+```{r}
+acf2(growth)
+```
+L'analyse des ACF et PACF confirme notre première intuition pour la série Growth, cette dernière semble bien stationnaire.
+
+```{r}
+acf2(dunrate)
+```
+L'analyse des graphes d'autocorrélation de la série Dunrate est moins claire. La série semble globalement stationnaire mais il faudra garder en tête que 2 lag en début de série du PACF sont quelque peu significatifs, surtout le 8e.
+
+# Question 1 :
+
+## Le choix du modèle
+
+Comme pour la modélisation univariée, il nous faut déterminer l'odre p de notre VAR(p).
+
+Pour choisir notre modèle, nous nous appuyons sur  les Critères d’information basés sur la vraisemblance : AIC (Akaike), SC (BIC), HQ
+(Hannan-Quinn)
+
+Tout d'abord, nous joignons nos deux séries :
+
+```{r}
+data <- cbind(growth, dunrate)
+```
+
+On cherche ensuite à minimiser ces critères d'information.
+Pour cela nous implémentons la formule suivante :
+
+```{r}
+VARselect(data, lag.max = 9, type = "const")$selection
+```
+Le choix du nombre de lag se base sur le dernier lag significatif des graphes d'autoccorrélation de nos séries. Plus précisement, on prend ce lag + 1. On rappel que le dernier lag significatif était le 8e, on prend donc un lag max de 9.<br/>
+On voit alors qu'un modèle VAR d'ordre 1 ou 2 est suggéré par ces différents critères.<br/>
+On sait que les critères de Schwarz (SIC) et de Hannan et Quinn (HQ) choisissent généralement des modèles plus parcimonieux, car ils pénalisent plus le nombre de paramètres.<br/>
+D'apres le critère de Schwarz (SIC), il faudrait implémenter un modèle VAR(1), et d'après le critère de Hannan et Quinn (HQ) un VAR(2).
+
+Cependant, mettre autant de retards (8+1), pourrait biaiser les résultats de nos critères.
+
+On implémente donc également un test en se basant comme référence sur le premier lag significatif, le 3e, et prenons donc lag.max=4
+
+```{r}
+VARselect(data, lag.max = 4, type = "const")$selection
+```
+Au final, d'après les résultats du tableau ci-dessus, il semblerait donc qu'un modèle VAR(1) soit le plus approprié.
+
+## Estimation du modèle
+
+On a donc déterminé qu'un modèle VAR(1) était le plus juste, la commande suivante permet de l'implémenter :
+
+```{r}
+Var1 <- VAR(data, p = 1, type = "const")
+summary(Var1)
+```
+
+Comme dans le cas univarié, on vérifie que les inverses des racines du polynome AR soient bien inférieures à 1, ce qui est effivement le cas ici (0.4751 0.1892). Cela confirme que nous avons bien deux séries stationnaires.
+
+En outre, on voit dans le tableau ci-dessus les résultats d'estimation. On remarque  notamment que l'ensemble des coefficients sont significatifs sauf le coefficient **growth.l1** dans l'équation **growth**.
+
+
+## Tests sur le modèle
+
+On étudie désormais le comportement des résidus de notre modèle pour vérifier que ces derniers formes bien un 'bruit blanc'.
+
+Nous implémentons alors la version multivariée du test du portmanteau pour vérifier que les innovations sont des bruits blancs, basée sur les autocorrélations propres et croisées.
+
+```{r}
+serial.test(Var1, lags.pt = 4, type = "PT.adjusted")
+```
+
+On obtient ainsi une p-value supérieure à O,O1. A 1% de confiance, on peut donc conclure que nos résidus sont des bruits blancs.
+A noter tout de même que nous ne pourrions pas avoir la même conclusion pour un niveau de test de 5%.
+
+On conclut cette série de test de notre modèle par un test de la normalité de nos résidus.
+
+Pour cela nous implémentons la formule suivante :
+
+```{r}
+normality.test(Var1)
+```
+La valeur de notre p-value est égale à 0,007, et la valeur de notre chi-squared est élévés donc on peut rejetter l'hypothèse nulle à un niveau 1% de significativité. <br/> En d'autres termes, on peut donc conclure que nos données ne sont pas normalement distribuéesn d'après le test Jarque-Bera.
+
+# Question 2 : Explorer les relations de causalités
+
+Il existe dans la littérature statistique plusieurs définitions de la causalité. La plus courante est la **causalité au sens de Granger** basée sur les prévisions des variables à partir de leur passé.
+
+Dans un processus VAR, la commande suivante permet d'étudier cette forme de causalité :
+
+```{r}
+causality(Var1, cause = c("growth"))
+```
+D'après les résultats ci-dessus, on peut voir que nos deux p-values sont bien inférieurs à 0,01. Autrement dit, on rejette l'hypothèse nulle dans les deux cas. <br/>
+Autrement dit, il y a une causalité instantanté entre le taux de chomage et le taux de croissance (résultat du second test). <br/>
+Mais surtout, d'après les résultat du premier test, on peut conclure que le taux de croissance a une causalité au sens de Granger sur le taux de chômage. En secondant notre analyse avec les résultats trouvés lors de l'estimation de notre modèle (coefficient négatif et significatif), on peut donc conclure qu'*une augmentation du taux de croissance diminue le taux de chomage* (et inversement), cetirus paribus.
+
+On étudie par la commande suivante la relation en miroir :
+
+```{r}
+causality(Var1, cause = c("dunrate"))
+```
+On trouve logiquement des résultats équivalents.<br/>
+
+
+# Question 3
+
+## Estimer un modèle ADL qui explique la croissance par la variation du taux de chomage
+
+Nous avons donc déterminier que le modèle le plus adéquate est un VAR(1).
+Ce modèle peut s'écrire sous la forme des équations suivantes :
+\[
+\begin{array}{rl}
+\Delta growth_t   = & c_1 + \phi_{1,1} \Delta growth_{t-1} +
+\phi_{1,2} \Delta dunrate_{t-1} + r u_{2t} + v_{1t}
+\\
+\Delta dunrate_t  = &  c_2 + \phi_{2,1} \Delta growth_{t-1} +
+\phi_{2,2} \Delta dunrate_{t-1} +  u_{2t}
+\, ,
+\end{array}
+\]
+
+avec $\left(v_{1t}, u_{2t}\right)$ bruit blanc
+
+On peut à partir de c'est deux équations pour obtenir le modèle suivant :
+\[\begin{array}{rl}\Delta growth_t  = & (c_1- r c_2)  + \left(\phi_{1,1} - r \phi_{2,1}\right) \Delta growth_{t-1}
+\\ & + r \Delta dunrate_t +  \left( \phi_{1,2} - r \phi_{2,2} \right) \Delta dunrate_{t-1}  + v_{1t}
+\, .
+\end{array}
+\]
+
+On voit alors que l'on peut bien implémenté un modèle ADL(1,1), afin d'expliquer la croissance par la variation du taux de chômage (et inversement).
+
+La commande suivante permet d'implémenté un modèle ADL(1,1) avec le taux de chômage comme variable explicative (plus exactement sa variation).
+
+```{r}
+adl <- dynlm(growth ~ L(growth,1) + dunrate + L(dunrate,1) )
+xtable(summary(adl)) %>%
+  kable(digits=2) %>%
+  kable_styling()
+```
+
+
+##  Quel est l’effet de long terme d’une variation du taux de chomage sur la croissance ?
+
+A partir des résultat obtenus à partir de notre modèle ADL, il nous est possible de tirer plusieurs conclusions.
+
+On sait que l'effet de long terme d'un modèle ADL(1,1) peut etre definie comme :
+
+
+$\frac{ (\beta_{0} +\beta_{1})}{1-\phi_{1}} = \frac{\beta (L)}{ \Phi(L)}$
+
+La commande suivante permet de retrouver les facteurs de notre modèle et d'appliquer cette formule :
+
+```{r}
+coef <- coefficients(adl)
+lte <- (coef[3]+coef[4])/(1-coef[2])
+names(lte) <- "Elasticité de long terme"
+print(lte)
+```
+
+On a donc un effet de long terme négatif, environ égale à -1,76. <br/>
+Cela rejoin nos analyses précédentes. Notamment les conclusions de notre modèle VAR(1).
+D'un point de vue économique cela semble cohérent. Une plus forte croissance signifie une augmentation de l'activité économique et donc de la demande de travail de la part des entreprises. <br/>
+A l'inverse, un plus fort chômage entraînera une baisse de l'activité dût notamment à la perte de pouvoir d'achat des individus ce qui fait donc diminuer la consommation et donc la demande et donc, de part un raisonnement keynésien élémentaire, le produit d'équilibre.
+
+# Question 4 :
+
+## Explorez l’impact d’un choc persistent sur l’innovation du chomage sur les deux variables
+
+Une méthode pour estimer l'impact de chocs s'intitule la méthode "Blanchard et Quah". Elle consiste à faire la différence entre choc persistent, qui a un effet de long terme, et choc transitoire, dont l’effet de long terme est nul.
+
+Avec nos données on va donc séparer les innovations en chocs persistant et transitoire sur la croissance.
+
+```{r}
+data2 <- cbind(dunrate, growth)
+Var2 <- VAR(data2, p = 1, type = "const")
+```
+
+
+```{r}
+bq <- BQ(Var2)
+summary(bq)
+```
+
+Voici donc l’effet cumulatif d’un choc persistent sur le chomage, qui a aussi un effet persistent sur la croisance :
+
+```{r}
+cirfdunrate <- irf(bq, impulse = "dunrate",
+               n.ahead = 10, boot = TRUE,
+               cumulative = TRUE)
+plot(cirfdunrate)
+```
+
+On remarque sur le tableau ci-dessus qu'un choc persistent sur l'innovation du chômage entraîne un effet de long terme négatif sur la croissance et un effet de long terme postitif sur la croissance du taux de chômage.
+
+
+## Cela est-il cohérent avec les résultats du modèles Adl ?
+
+Cela est cohérent avec la relation négative non nulle de long terme de notre modèle ADL. <br/>
+Une hausse du taux de chômage entraîne une baisse de l'activité et de la demande, donc une baisse du taux de croissance qui a son tour réduit l'emploi et augmente donc le taux de chômage, etc...

@@ -1,0 +1,258 @@
+---
+title: "Devoir 2 Série Temporelle"
+author: Romain Veysseyre Aurelien Witecki
+date: 27/09/2020
+output: 
+  html_document :
+    toc : True
+    toc_depth : 4
+    df_print: paged
+---
+
+
+
+
+```{r Knitr_Global_Options, include=FALSE}
+library(knitr)
+opts_chunk$set(warning = FALSE, message = FALSE, 
+               autodep = TRUE, tidy = FALSE, 
+               cache = TRUE, fig.dim=c(6,3.7), fig.align = "left")
+#opts_chunk$set(cache.rebuild=TRUE) 
+```
+
+
+## Question 1 : Considérez la série Industrial Production. Que tirez-vous comme informations des graphiques (série, ACF/PACF) ?
+
+```{r, ECHO=FALSE}
+library(urca)
+library(astsa)
+library(Quandl)
+Quandl.api_key("9EPWVxYmnNgknQvXGXx8")
+library(forecast)
+```
+
+```{r, fig.align='center' }
+data(nporg)
+IP <- nporg$ip
+ts.plot(IP)
+```
+
+
+Le graphique montre que la production industrielle augmente au fur et à mesure du temps. Ce qui semble logique d'un point de vu économique du fait que le monde connait une croissance continu et que cette dernière s'accompagne d'une industrialisation des moyens de productions.        
+Ce phénomène s'applique peut être moins dans les économie occidentale moderne qui connaissent une désinsustrialisation partielle de leur économie mais reste prédominant d'un point de vu mondial.  
+
+De part sont allure croissante, le graphique de la série semble nous indiquer que la série n'est pas stationnaire. Et donc  qu'elle gravite autour d'une tendance à la hausse. En revanche, il ne nous permet pas de définir le type de non stationnarité. 
+
+- Ainsi, nous ne pouvons dire à ce stade si la non stationnarité est de type stochastique ou déterministe.
+
+```{r, fig.align='center'}
+Aux <- acf2(IP)
+```
+
+
+L'autocorrélograme montre une autocorrélation au Lag 1 proche de 1 diminuant lentement avec le temps. Sachant que les autocorrélation décrivent dans quelle mesure la valeur actuelle est liée à ses valeurs passées, nous pouvons conclure que la valeur actuelle est fortement dépendante de ses valeurs antérieurs.
+Ce qui semble indiqué la présence d'une tendance du fait que l’autocorrelogramme simple d’un processus non stationnaire est celui d’un AR(1) avec $\delta$ proche de 1.   
+
+L'autocorrélogramme partiel permet de déterminer les autocorrélation des résidus (soit ce qui subsiste après élimination des effets expliqué dans l'ACF). Les autocorrélations partielles sont non significatives à partir du Lag 2. Ce qui implique que la valeur actuelle dépend en grande majorité des valeurs passées (cf ACF) et très peu des bruits blancs (Choc)
+
+- Ces deux autocorrélogrammes semble ainsi indiquer la présence d'une non stationnarité mais ne nous permettent pas de déterminer le type de non stationnarité.
+
+## Question 2 : Pour cette variable, répliquez le test de racine unité de la Table 5. Quelles conclusions en tirez-vous ?
+
+```{r}
+logIP <- log(IP)
+test.df <- ur.df(log(IP), type = "trend", lags = 5)
+summary(test.df)
+```
+
+Le "Dickey-Fuller unit root test" à pour hypothèse nulle la présence d'une racine unitaire, soit une non stationnarité de type stochastique.
+Dans leur article, Nelson et Poster modélise le logaritme de la production industrielle et spécifie le model avec une constante, le logarithme de la valeur précédente(t-1), un paramètre de tendance et les différenciels d'un log des valeurs de t-k+1 et t-k avec k appetenant à [2;6].
+Nous avons donc mis en place un test de type : trend, pour modaliser la constante et le paramètre de tendance. Il va donc nous permettre de tester si le coefficient de la constante est égal à 0 , si la constante et le paramètre de la tendance est égal à 0 ainsi que si ces deux paramètres et celui de la valeur précédente sont égaux à 0.
+Les statistiques de tests sont -2.5287, 10.6663 et 3.4039. 
+
+Elles sont à comparer respectivement avec les valeurs critiques de $\tau3$, $\phi2$ et $\phi3$ à 1%, 5% et 10%.
+Tau : $\y_(t-1)$ =0
+phi3 :tendance et yt-1 = 0
+phi 2 : tendance , constante et yt-1 =0
+
+Pour le cas du coefficient de la valeur précédente (t-1), soit en comparant -2,5287 à $\tau3$ nous tombons dans la zone d'échec du rejet de l'hypothèse nulle pour 1%, 5% et 10%. Il est donc statistiquement significatif d'expliquer la production industrielle actuelle avec la production industrielle de l'année précédente. Ce test confirme ainsi la présence d'une racine unitaire et implique que nous sommes dans processus non stationnaires de type stochastique.
+
+
+En ce qui concerne le test joint du coefficient de la tendance et de celui de la valeur précédente, soit en comparant 3.4039 aux valeurs de $\phi3$. Nous tombons dans la zone d'échec du rejet de l'hypothèse nulle pour 1%, 5% et 10%. Il est donc statistiquement significatif d'expliquer la production industrielle actuelle par la production instrielle précédente et d'une tendance.
+En ce qui concerne le test joint du coefficient de la tendance, de celui de la valeur précédente et de celui de la constante, soit en comparant 10.6663 à $\phi2$. Nous tombons dans la zonne de rejet de l'hypothèse nulle. C'est à dire que l'un des coefficients de ces 3 variables est égal à 0. Avec les deux tests implémentés précédemment nous avons montré que les paramètres de la production instrielle précédente(yt-1) et de la tendance était différent de 0. Cela implque que c'est le paramètre de la constante qui est égal à 0.
+
+- En conclusion cela pose un problème de spécification. En effet, les valeurs critiques dépendent de la présence ou non d’une constante ou d’une tendance. Hors ce dernier test vient de nous montrer l'absence de constante alors que nous avons modéliser la production industrielle comme fonction d'une constante ie avec dérive. Les tests précédents sont donc biaisés et il nous faut les refaires en remodélisant la production industrielle mais comme fonction de la production industrielle passée, de la tendance et des différentielles de Lag.
+
+## Question 3 : Introduisez plus / moins de retards. Cette expérience confirment-ils le choix de Nelson et Plosser ? 
+
+
+
+#### Application d'un Lag L = 2
+
+```{r}
+logIP <- log(IP)
+test.df <- ur.df(log(IP), type = "trend", lags = 2)
+summary(test.df)
+```
+
+
+D'après l'étude des PACF, les autocorrélations partielles sont non significative à partir du Lag 2.
+Il nous faudra donc surdimensionner notre modèle d'au moins deux différentielles d'un log des valeurs de t-k+1 et t-k avec k appetenant à [2;3]. Nous prennons comme hypothèse que les résidus sont des bruits blancs. (La non significativité des coefficients des deux différentielles dans la regression semble nous le confirmer).
+
+- L'études des comparaisons des valeurs de tests et des valeurs critiques avec un Lag =2 montre les mêmes résultats que ceux avec un modèle au lag 5 exception faite pour le cas du coefficient de la valeur précédente (t-1), et pour le fait que la valeur de la statistique de F soit supérieur dans le cas de $\tau3$ à 10%, ie  -3,1846 est supérieur à $\tau3$. Nous tombons dans la zone d'échec du rejet de l'hypothèse nulle pour 1%, 5% mais pas 10%.
+
+
+
+#### Application d'un Lag L = 3
+
+```{r}
+logIP <- log(IP)
+test.df <- ur.df(log(IP), type = "trend", lags = 3)
+summary(test.df)
+```
+
+
+L'études des comparaisons des valeurs de tests et des valeurs critiques avec un Lag = 3 montre les mêmes résultats que ceux avec un modèle au lag 2. le cas du coefficient de la valeur précédente (t-1), et pour le fait que la valeur de la statistique de F soit supérieur dans le cas de $\tau3$ à 10%, ie -3.2699 est supérieur à  -3.13.  
+
+- Nous tombons dans la zone d'échec du rejet de l'hypothèse nulle pour 1%, 5% mais pas 10%. Contrairement au Lag=5 qui l'admettait à 10%.
+
+
+
+#### Application d'un Lag L = 4
+
+```{r}
+logIP <- log(IP)
+test.df <- ur.df(log(IP), type = "trend", lags = 4)
+summary(test.df)
+```
+
+
+L'étude des comparaisons des valeurs de tests et des valeurs critiques avec un Lag = 4 montre les mêmes résultats que ceux avec un modèle au lag 5. Soit : (Cf question 2)
+
+- Pour le cas du coefficient de la valeur précédente (t-1), soit en comparant -2,5287 à $\tau3$. Nous tombons dans la zone d'échec du rejet de l'hypothèse nulle pour 1%, 5% et 10%. Il est donc statistiquement significatif d'expliquer la production industrielle actuelle avec la production industrielle de l'année précédente. Ce test confirme ainsi la présence d'une racine unitaire et implique que nous sommes dans processus non stationnaire de type stochastique.
+
+- En ce qui concerne le test joint du coefficient de la tendance et de celui de la valeur précédente, càd en comparant 3.4039 aux valeurs de $\phi3$. Nous tombons dans la zone d'échec du rejet de l'hypothèse nulle pour 1%, 5% et 10%. Il est donc statistiquement significatif d'expliquer la production industrielle actuelle par la production instrielle précédente et d'une tendance.
+
+- En ce qui concerne le test joint du coefficient de la tendance, de celui de la valeure précédente et de celui de la constante, càd en comparant 10.6663 à $\phi2$. Nous tombons dans la zonne de rejet de l'hypothèse nulle. C'est à dire que l'un des coefficients de ces 3 variables est égal à 0. Avec les deux tests implémentés précédemment nous avons montré que les paramètres de la production instrielle précédente(yt-1) et de la tendance était différent de 0. Cela implque que c'est le paramètre de la constante qui est égal à 0.
+
+En revanche il est à noter qu'à la différence du modèle avec un Lag 5, ce model avec un lag 4 ne nous permet pas de constater que le coefficient de la différentielle du log de la production industrielle en t-4 et t-5 est significative. Et donc il semble que le résidu de l'année 5 n'est pas un bruit blanc mais qu'il a du influencer la tendance de long terme.
+
+
+
+#### Application d'un Lag L = 6
+ 
+```{r}
+logIP <- log(IP)
+test.df <- ur.df(log(IP), type = "trend", lags = 6)
+summary(test.df)
+```
+ 
+
+Sachant que sous dimmensionner notre modèle distord le niveau du test et implique donc des conclusions souvent erronées en cas de racine unité nous nous devons de surdimensionner notre modèle au moins au Lag 2.
+  
+En revanche, en surdimentionnant trop notre modèle nous allons perdre en puissance du test. 
+
+- Le choix de surdimentionner au lag 4 nous semble optimal car il montre les mêmes résultats que ceux avec un modèle au lag 5. Mais ces tests sont plus puissants que celui-ci étant donné qu'il est moins surdimensionné, plus parcimonieux.
+
+- Néanmoins étant donné que surdimmensionner au lag 5 nous donne une information quant à la significativité du coefficent de la différentiellee du log de la production industrielle en t-4 et t-5, perdre un peu de puissance de test pour une information de cette nature nous semble le plus adapté.
+
+## Question 4 : Importez une série plus complète et récente correspondant à Industrial Productions/ Utilisez les graphiques, la méthode de Tiao et Tsay, et les tests ADF pour analyser la tendance de la série..
+
+```{r Nouvelles données}
+Quandl("ISM/MAN_PROD")
+Prod <- Quandl("FRED/IPMAN",
+               api_key="9EPWVxYmnNgknQvXGXx8",
+               start_date="1950-01-01",
+               end_date="2020-08-31",
+               collapse="quarterly",type="zoo")
+```
+
+### Analyse graphique
+
+#### Graphique de la série
+
+```{r Ts plot}
+ts.plot(Prod)
+```
+Le graphique de la série montre que la production industrielle augmente au fur et à mesure du temps. De part sont allure croissante, le graphique de la série semble nous indiquer que la série n'est pas stationnaire. Et donc qu'elle gravite autour d'une tendance à la hausse. En revanche, nous voyons qu'un peu avant 2010, la tendance semble s'effondrer ce qui pourrait correspondre à la crise des subprime survenue en 2008. La production industrielle retombe à ce qu'elle était dans les années 2000. Cette chute brise la tendance claire de la série.  
+
+- Même si le graphique semble nous indiquer la présence d'une tendance, il ne nous permet pas de définir le type de non stationnarité. Ainsi, nous ne pouvons dire à ce stade si la non stationnarité est de type stochastique ou déterministe.
+
+#### ACF/PACF
+
+```{r}
+acf(Prod, lag.max = 20)
+pacf(Prod)
+```
+L'autocorrélograme montre une autocorrélation au Lag 1 proche de 1 diminuant lentement avec le temps. Sachant que les autocorrélation décrivent dans quelle mesure la valeur actuelle est liée à ses valeurs passées, nous pouvons conclure que la valeur actuelle est fortement dépendante de ses valeurs antérieurs.
+Ce qui semble indiqué la présence d'une tendance du fait que l’autocorrelogramme simple d’un processus non stationnaire est celui d’un AR(1) avec $\delta$ proche de 1.   
+ Nous arrivons donc au même conclusion qu'avec les valeurs plus anciennes.  
+ 
+Nous aurions pu imaginer que l'autocorrélation  entre la production industrielle de 2007 et 2008 serait très faible du fait de la crise. 
+
+En effet la valeur de la production de 2007 à logiquement dût moins représenter un bonne indicateur prévisionnel pour la production de 2008, la production ayant chutée cette année la pour une multitude de facteurs exogènes. Cependant, nous ne retouvons pas cette faible autocorrélation au sein de l'autocorrélograme.    
+
+L'autocorrélogramme partiel permet de déterminer les autocorrélation des résidus (soit ce qui subsiste après élimination des effets expliqués dans l'ACF). Les autocorrélations partielles sont non significatives à partir du Lag 2. Ce qui implique que la valeur actuelle dépend en grande majorité des valeurs passées (cf ACF) et très peu des bruits blancs (Choc).
+Cela semble étrange que nous ne retrouvions pas au moins une autocorrélation partielle significative pour 2008 étant donné que c'est évidemment le choc exogène qu'a représenté la crise de subprime qui a fait plonger la production industrielle.     
+
+Ces deux autocorrélogrammes semble indiquer la présence d'une non stationnarité mais ne nous permettent pas de déterminer le type de non stationnarité.
+
+### La méthode de Tiao et Tsay
+
+Cette méthode consiste a identifier une série intégrée en estimant un AR “sur-paramétré” sur la série originale par moindres carrés conditionnels.
+
+```{r Méthode de Tiao et Tsay : 14}
+arorder <- 14
+TTmodel <- Arima(IP, order=c(arorder,0,0),method="CSS")
+phi <- coef(TTmodel)[1:arorder]
+print(phi)
+```
+
+
+```{r Méthode de Tiao et Tsay : 15}
+arorder <- 15
+TTmodel <- Arima(IP, order=c(arorder,0,0),method="CSS")
+phi <- coef(TTmodel)[1:arorder]
+print(phi)
+```
+
+```{r Méthode de Tiao et Tsay : 16}
+arorder <- 16
+TTmodel <- Arima(IP, order=c(arorder,0,0),method="CSS")
+phi <- coef(TTmodel)[1:arorder]
+print(phi)
+```
+
+Ici nous nous intéressons seulement à la présence d’une racine unitaire : la présence d’une racine estimée très proche de 1 fait suspecter un processus intégré I(1). En surdimenssionant notre modèle de 14, 15 et 16, nous voyons que le premier coefficient tend vers 1 jusqu'à la spécification avec un Lag 15 et qu'il s'en éloigne pour un modèle plus surdimensionné. (Cf arorder <- 16)
+Sachant que lorsqu’on estime une marche alétaoire par un modèle AR, les coefficients sont biaisés vers 0 . Donc les racines sont biaisés vers le haut ce qui explique que nous ne retrouvons pas une racine égale à 1 mais au mieux à 1.042.(Cf arorder <- 15)
+
+Ces resultats semblent indiquer que la spécification optimale de notre modèle est avec un Lag allant de 1 à 15. Cela ne semble pas logique avec l'analyse de PACF qui montrait des autocorrélations partielles non significative à partir du lag 2.
+
+### Test Dickey-Fuller unit root test
+```{r}
+logProd <- log(Prod)
+test.df <- ur.df(logProd, type = "trend", lags = 2)
+summary(test.df)
+```
+
+Le "Dickey-Fuller unit root test" à pour hypothèse nulle la présence d'une racine unitaire, soit une non stationnarité de type stochastique.   
+
+Nous avons mis en place un test de type : trend pour tester la présence ou non d'une constante et d'un paramètre de tendance. Il va donc nous permettre de tester si le coefficient de la constante égal à 0 , si la constante et le paramètre de la tendance est égal à 0 ainsi que si ces deux paramètres et celui de la valeur précédente est égal à 0.
+
+Les statistiques de tests sont -1.6371, 2.5841 et 2.3877 
+. Elles sont à comparer respectivement avec les valeurs critiques de $\tau3$, $\phi2$ et $\phi3$ à 1%, 5% et 10%.
+
+Tau : yt-1 =0
+phi3 :tendance et yt-1 = 0
+phi 2 : tendance , cst et yt-1 =0
+
+- Pour le cas du coefficient de la valeur précédente (t-1), soit en comparant -1,6371 à $\tau3$. Nous tombons dans la zone d'échec du rejet de l'hypothèse nulle pour 1%, 5% et 10%. Il est donc statistiquement significatif d'expliquer la production industrielle actuelle avec la production industrielle de l'année précédente. Ce test confirme ainsi la présence d'une racine unitaire et implique que nous sommes dans processus non stationnaires de type stochastique.
+
+- En ce qui concerne le test joint du coefficient de la tendance et de celui de la valeur précédente, soit en comparant 2.3877 aux valeurs de $\phi3$. Nous tombons dans la zone d'échec du rejet de l'hypothèse nulle pour 1%, 5% et 10%. Il est donc statistiquement significatif d'expliquer la production industrielle actuelle par la production instrielle précédente et d'une tendance.
+
+- En ce qui concerne le test joint du coefficient de la tendance, de celui de la valeur précédente et de celui de la constante, soit en comparant 2.5841 à $\phi2$. Nous tombons dans la zonne de rejet de l'hypothèse nulle.Nous tombons dans la zone d'échec du rejet de l'hypothèse nulle pour 1%, 5% et 10%. Il est donc statistiquement significatif d'expliquer la production industrielle actuelle par la production instrielle précédente, d'une tendance et d'une constante.
+
+
+- En conclusion notre spécification semble adéquate étant donné que les coefficiant de la constante, de la tendance et de la valeur précédente sont bien différent de 0 .Contrairement au données antérieurs  cette fois ci nous pouvons confirmer la présence d'une constante. 
+
+D'après nos résultats et notre analyse on peut donc conclure que la production industrielle semble suivre un processus non stationnaire de type stochastique avec dérive. 

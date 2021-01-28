@@ -1,0 +1,324 @@
+---
+title: "Devoir 4"
+author: Romain Veysseyre & Aurelien Witecki
+date: 20/10/2020
+output:
+    html_document:
+        df_print: paged
+        toc: true
+        toc_depth : 5
+        keep_md: true
+        code_folding: show
+        fig_width: 6.5
+        fig_height: 3
+---
+
+```{r Knitr_Global_Options, include=FALSE}
+library(knitr)
+opts_chunk$set(warning = FALSE, message = FALSE,
+               autodep = TRUE, tidy = FALSE,
+               cache = TRUE, fig.dim=c(6,3.7), fig.align = "left")
+#opts_chunk$set(cache.rebuild=TRUE)
+```
+
+```{r}
+funggcast <- function(dn,fcast){
+require(zoo)
+en <- max(time(fcast$mean))
+ds <- as.data.frame(window(dn,end=en))
+names(ds) <- 'observed'
+ds$date <- as.Date(time(window(dn,end=en)))
+dfit <- as.data.frame(fcast$fitted)
+
+dfit$date <- as.Date(time(fcast$fitted))
+names(dfit)[1] <- 'fitted'
+ds <- merge(ds,dfit,all.x=T)
+dfcastn <- as.data.frame(fcast)
+Sys.setlocale("LC_TIME", "English_United States")
+dfcastn$date <- as.Date( as.yearmon( row.names(dfcastn) ) )
+names(dfcastn) <- c('forecast','lo80','hi80','lo95','hi95','date')
+pd <- merge(ds,dfcastn,all.x=T)
+return(pd)
+}
+```
+
+
+```{r}
+ggplot_forecast <- function(pd) {
+p1a <- ggplot(data = pd, aes(x = date,y = observed))
+p1a <- p1a + geom_line(col = 'red')
+p1a <- p1a + geom_line(aes(y = fitted),col = 'blue')
+p1a <- p1a + geom_line(aes(y = forecast)) +
+geom_ribbon(aes(ymin = lo95,ymax = hi95),alpha = .25)
+p1a <- p1a + scale_x_date(date_breaks = "12 month",
+date_labels = "%b-%y")
+p1a <- p1a + theme(axis.text.x = element_text(size=10))
+p1a <- p1a + ggtitle("Arima Fit to Simulated Data",
+subtitle =
+"(black=forecast, blue=fitted,red=data, shadow=95% conf. interval)" )
+p1a
+}
+```
+
+```{r Data}
+library(TSA)
+library(urca)
+data(nporg)
+library(zoo)
+```
+
+# A. Validation croisée pour la variable Emploi.
+
+La validation croisée nous permet de vérifier la pertinence des prédictions de notre modèle.
+Pour cela, nous divisons notre modèle en deux jeux de données :
+
+- Le training set, soit l'échantillon d'apprentissage représentant environ 80% de nos données.
+- Le test set, soit l'échantillon de validation qui va nous permettre de confronter les prévisions aux réalisations.
+
+## Partie 1
+
+
+```{r}
+emp <- na.omit(nporg$emp)
+emp <- ts(emp, start =c(1890))
+```
+
+
+Nous avons des données sur l'emploi de l'année 1870 à 1970, soit sur 80 ans. Nous donc allons donc prendre les données des 64 premières années (80% de l'échantillon complet) soit de 1870 à 1934 pour former notre echantillon d'apprentissage.
+
+Pour notre échantillon de validation nous prenons les 20% restant soit de 1935 à 1970.
+
+On obtient ainsi ce qu’on appelle des *pseudo out-of-sample forecasts*.
+
+
+
+```{r}
+s1_train <- window(emp, end=c(1954))
+ts.plot(s1_train)
+```
+
+Nous avions estimé préalablement que le modèle semblant le plus adéquate était un MA(1) sur la série différentiée d'ordre 1.
+
+```{r}
+library(forecast)
+s1_fit <- Arima(s1_train, order = c(0, 1, 1), include.drift = T)
+```
+
+On peut maintenant prévoir sur les données d’après notre observation, soit à partir de 1935 inclus.
+
+```{r}
+s1_forecast <- forecast(s1_fit, h = 16)
+autoplot(s1_forecast)
+```
+Pour cette première série, la prévision semble adéquate. En effet, les données prédite semble suivre la tendance de long terme. En effet, notre modèle ne peut prédire les chocs futurs que connaitra l'économie, en revanche il est capable de déterminer  si l'emploi se comporte comme il s'est comporté jusqu'à présent, il tendra à croître à mesure du temps qui passe. Nous pouvons remarquer que l'intervalle de confiance est large, cela est dût au fait que l'emploi a connu des chocs par le passé et qu'il n'est pas exempt que cela se reproduise. Sur le graphique nous remarquons que la tendance se brise dans les années 1930 du fait de la crise de 1929. Cela est pris en compte par l'intervalle de confiance construit sur la variance de l'échantillon.
+ Enfin nous remarquons que la prédiction de l'emploi furtur est plus volatilent à mesure que la confiance augmente. (Intervalle bleu foncé est plus large que l'intervalle bleu clair)
+
+Pour affiner cette hypothèse, on réalise des graphiques permettant de comparer prévisions et réalisations.
+
+
+```{r}
+library(ggplot2)
+s1_df <- funggcast(emp, s1_forecast)
+```
+
+```{r}
+ggplot_forecast(s1_df)
+```
+
+
+Bien que nous remarquons un léger décalage entre les valeurs prédites et observées elles semble corespondre. La puissance de prédiction de se modèle semble satisfaisante pour la série emploi du moins graphiquement. Nous allons affiner notre analyse en prenant en compte certains indicateurs.
+
+
+## Partie 2
+
+On peut juger de la qualité du modèle suivant plusieurs indicateurs.
+
+- ME: Mean Error
+- RMSE: Root Mean Squared Error
+- MAE: Mean Absolute Error
+- MPE: Mean Percentage Error
+- MAPE: Mean Absolute Percentage Error
+- MASE: Mean Absolute Scaled Error
+- ACF1: Autocorrelation of errors at lag 1.
+
+Ici la qualité du modèle sur l'échantillon de validation.
+
+```{r}
+accuracy(s1_fit)
+```
+
+```{r}
+emp_test <- window(emp, start = c(1890))
+emp_fit_test <- Arima(emp_test, model = s1_fit)
+accuracy(emp_fit_test)
+```
+En théorie tous ces indicateurs devraient aller danss le même sens
+A noter qu'il n'existe pas de règle précise pour déterminer lequel considérer par rapport aux autres.
+
+Nous remarquons quand même une différence importante entre les indicateurs de l'échantillon d'entraînement et de test.
+Cela sous-entend qu'"entrainer" notre modèle affine la prédiction de celui ci.
+
+Si nous prenons l'indicateur MAE qui est la moyenne des ecarts prédits par notre modèle et observés nous remarquons qu'il ne sont pas très éloignés (1233 et 1155).  Ce qui  sous-entend que notre modèle à une puissance de prédiction satisfaisante. En revanche, cela peut être dût au fait que nos échantillons restent petits et qu'ils cachent donc tres possiblement un biais.
+
+
+
+On peut calculer des indices de performances notamment via la méthode de l'expanding windows ou bien via la méthode de la rolling window.
+
+On étudie ici l'expanding windows avec horizon h = 1
+
+```{r}
+farima <- function(x, h)
+{
+forecast(Arima(x, order = c(0,1,1),
+include.constant = TRUE,
+method = "CSS-ML")
+, h = h)
+}
+```
+
+
+
+```{r}
+e1 <- tsCV(emp, farima, h = 1, initial = 60)
+summary(e1)
+sd(e1, na.rm = T)
+```
+On étudie ici l'expanding windows avec horizon h de 1 à 4
+
+```{r}
+e4 <- tsCV(emp, farima, h = 4, initial = 60)
+summary(e4, summary)
+sapply(e4,sd, na.rm = T)
+```
+La prédicition est bien plus mauvaise à l'horizon 4 qu'à l'horizon 1 mais c'est logique : plus on essaye de prévoir loin moins c'est précis
+
+On test également pour une rolling window
+
+```{r}
+e1 <- tsCV(emp, farima, h = 1, window = 80)
+summary(e1)
+```
+A partir de ces résultats, on peut calculer l'indicateur qui nous intéresse (MAE, MPE, ...)
+
+# B. Validation croisée pour la variable Gnp.n.
+
+Nous avons décidé de prendre la variable Gnp.n soit le Produit National Brut (PNB). Contrairement au PIB,  qui mesure la
+ richesse produite par l'ensemble des opérateurs et personnes résidant sur un territoire précis, le PNB est calculé en
+ fonction des ressortissants d'un pays, indépendamment de leur lieu de résidence. Il calcule donc la richesse créée
+ par l'ensemble des resortissants d'un pays qu'ils soit sur ce pays ou à l'étranger. Il calcule donc la richesse créée
+ par un peuple plutot que celle créée par une nation.
+
+Comme pour la première série nous crééons deux sous échantillons :
+
+- Le training set, soit l'échantillon d'apprentissage représentant 80% de nous données.
+- Le test set, soit l'échantillon test qui va nous permettre de confronter les prévisions aux réalisations.
+```{r}
+GnpN <- na.omit(nporg$gnp.n)
+Gnp <- ts(GnpN, start= c (1909))
+```
+ Nous avons des données sur le GNP.n de l'année 1909 à 1970, soit sur 61 ans. Nous donc allons donc prendre les données des 44 premières années (80% de l'échantillon complet) soit de 1909 à 1953 pour former notre échantillon d'apprentissage.
+
+Pour notre échantillon de validation nous prenons les 20% restant soit de 1954 à 1970.
+
+On obtient ainsi ce qu’on appelle des *pseudo out-of-sample forecasts*.
+
+```{r}
+s2_train <- window(Gnp, end = c(1954))
+ts.plot(s2_train)
+```
+
+Nous avions estimé préalablement que le modèle semblant le plus adéquate était un MA(1) sur la série différentiée d'ordre 1.
+
+```{r}
+library(forecast)
+s2_fit <- Arima(s2_train, order = c(0, 1, 1), include.drift = T)
+```
+
+
+```{r}
+s2_forecast <- forecast(s2_fit, h = 16)
+autoplot(s2_forecast)
+```
+Pour cette deuxième série, et tout comme la première, la prévision semble adéquate. En effet, la données prédites semblent suivre la tendance de long terme. En effet, notre modèle ne peut prédire les chocs futurs que connaîtra l'économie, en revanche il est capable de déterminer si l'emploi se comporte comme il s'est comporté jusqu'à présent et il tendra ainsi à croître à mesure du temps qui passe.
+ Enfin nous remarquons que la prédictions du GNP.n futur est plus volatilent à mesure que la confiance augmente. (Intervalle bleu foncé est plus large que l'intervalle bleu clair)
+
+Pour affiner cette hypothèse, on réalise des graphiques permettant de comparer prévisions et réalisations.
+
+```{r}
+library(ggplot2)
+s2_df <- funggcast(Gnp, s2_forecast)
+```
+
+```{r}
+ggplot_forecast(s2_df)
+```
+Le décalage entre les valeurs prédites et observées est minime. La puissance de prédiction de se modèle semble satisfaisante pour la série Gnp du moins graphiquement. Etant donnée que cette série est plus "lisse" que la précédente (moins de choc) les valeurs prédites semble plus en adéquation avec les valeurs observée.
+
+Nous allons affiner notre analyse en prenant en compte certains indicateurs.
+
+```{r}
+accuracy(s2_fit)
+```
+
+```{r}
+Gnp_test <- window(Gnp, start = c(1909))
+Gnp_fit_test <- Arima(Gnp_test, model = s2_fit)
+accuracy(Gnp_fit_test)
+```
+En théorie tous ces indicateurs devraient aller ds le même sens
+A noter qu'il n'existe pas de règle précise pour déterminer lequel considérer par rapport aux autres.
+
+Nous remarquons une différence importante entre les indicateurs de l'échantillon d'entrainement et de test.
+Cela sous entend qu'"entrainer" notre modèle affine la prédiction de celui ci.
+
+Si nous prenons l'indicateur MAE qui est la moyenne des ecarts prédits par notre modèle et observés nous remarquons qu'il sont assez éloignés (8000 et 12000). Cela sous entend que notre modèle n'est peut être pas forcément le meilleur en ce qui concerne la prédiction.
+
+On peut calculer des indices de performances notamment via la méthode de l'expanding windows suivant l'une ou l'autre méthode
+
+On étudie ici l'expanding windows avec horizon h = 1
+
+```{r}
+farima <- function(x, h)
+{
+forecast(Arima(x, order = c(0,1,1),
+include.constant = TRUE,
+method = "CSS-ML")
+, h = h)
+}
+```
+
+
+
+```{r}
+f1 <- tsCV(Gnp, farima, h = 1, initial = 30)
+summary(f1)
+sd(f1, na.rm = T)
+```
+On étudie ici l'expanding windows avec horizon h de 1 à 4
+
+```{r}
+f4 <- tsCV(emp, farima, h = 4, initial = 30)
+summary(f4, summary)
+sapply(f4,sd, na.rm = T)
+```
+La prédiction est  plus mauvais à l'horizon 4 qu'à l'horizon 1 mais c'est logique : plus on essaye de prévoir loin moins c'est précis
+
+On test également pour une rolling window
+
+```{r}
+f1 <- tsCV(emp, farima, h = 1, window = 61)
+summary(f1)
+```
+A partir de ces résultats, on peut calculer l'indicateur qui nous intéresse (MAE, MPE, ...)
+
+
+# Est-ce que ces performances vous satisfont ? Justifiez votre réponse.
+
+
+Pour la première série notre modèle semble prédire efficacement les données futurs. A condition bien-sûr que les données se comportent comme elles se sont comportées jusque là. En effet, si ce n'est un léger décalage les valeurs prédites et observées semblent correspondres.
+
+En ce qui concerne la seconde série, graphiquement nous pouvions trouver une correspondance entre valeurs prédites et observées. Cependant, l'étude des estimateurs montre une différence non-négligeable entre valeurs prédites et observées.Notamment la MAE  qui est la moyenne des ecarts prédits par notre modèle et observés.
+
+# Ces évaluations pourraient-elles vous conduire à réviser vos modèles et dans quelle mesure ?
+
+Sur la première série, c'est à dire l'emploi, non, étant donné que notre modèle semble prédire de façon efficace. En revanche, un modèle plus précis pour la variable Gnp est à envisager du fait de la faiblesse de ses prédictions. 

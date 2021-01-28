@@ -1,0 +1,31 @@
+---
+title: "Devoir 1"
+author: Witecki Aurélien Veyssseyre Romain
+date: 21/09/2020
+output: html_document
+---
+
+
+```{r echo=FALSE, eval=FALSE}
+set.seed(seed=123)
+Model1 <- arima.sim(model = list(ma =c(.95, .5)), n=300)
+ts.plot(Model1,type='o', col='yellow')
+acf(Model1)
+pacf(Model1)
+```
+
+```{r Model2, echo=FALSE, eval=FALSE}
+set.seed(seed= 123)
+Model2 <- arima.sim(model= list(ar=c(0, .81)), n = 300)
+ts.plot(Model2, type='o', col="yellow")
+acf(Model2)
+pacf(Model2)
+```
+
+```{r}
+set.seed(seed=2020)
+Model3 <-arima.sim(model = list(ar= c(0, -.8), ma =c(.95, .5)), n=300)
+ts.plot(Model3, type='o', col='yellow')
+acf(Model3)
+pacf(Model3)
+```

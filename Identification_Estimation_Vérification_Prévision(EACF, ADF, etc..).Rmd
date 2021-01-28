@@ -1,0 +1,414 @@
+---
+title: "Devoir 3"
+author: Romain Veysseyre & Aurelien Witecki
+date: 04/10/2020
+output:
+    html_document:
+        df_print: paged
+        toc: true
+        toc_depth : 5
+        keep_md: true
+        code_folding: show
+        fig_width: 6.5
+        fig_height: 3
+---
+
+```{r Knitr_Global_Options, include=FALSE}
+library(knitr)
+opts_chunk$set(warning = FALSE, message = FALSE,
+               autodep = TRUE, tidy = FALSE,
+               cache = TRUE, fig.dim=c(6,3.7), fig.align = "left")
+#opts_chunk$set(cache.rebuild=TRUE)
+```
+
+
+# Question 1 : Modèle pour la série "Employment"
+
+## Identification
+
+Avant toute estimation du modèle nous devons veiller à ce que la série soit stationnaire.<br/> En effet, pour capturer l'essentiel de la dynamique et ainsi pouvoir faire des prédictions réalistes le futur doit se comporter de la même manière que le passé, c'est à dire que ses propriétés statistiques ne varient pas dans le temps.
+
+### La série est-elle intégrée et donc non-stationnaire ?
+
+```{r Data}
+library(urca)
+library(dplyr)
+library(astsa)
+
+data(nporg)
+Emp <- na.omit(nporg$emp)
+dlogEmp <- diff(na.omit(log(Emp)))
+```
+<br/>
+
+#### Analyse graphique
+
+```{r TS.Graph}
+library(astsa)
+ts.plot(Emp)
+```
+En analysant, le ts.plot, on peut voir que, comme cela est souvent le cas pour les séries économiques, la série semble s'inscrire comme une processus stationnaire autour d'une tendance. <br/> <br/> En effet, le graphique montre que l'emploi augmente au fur et à mesure du temps. Cela  semble logique d'un point de vu économique du fait que le monde connait une croissance continu et qu'elle s'accopagne d'une augmentation de la production industrielle (cf devoir 2) et donc forcément d'une augmentation de l'emploi.
+
+De part sont allure croissante, le graphique de la série semble nous indiquer que la série n'est pas stationnaire. Et donc qu'elle gravite autour d'une tendance à la hausse. En revanche, il ne nous permet pas de définir le type de non stationnarité.
+
+- Ainsi, nous ne pouvons dire à ce stade si la non stationnarité est de type stochastique ou déterministe.
+
+On étudie à présent les graphes ACF et PACF pour affiner notre intuition.
+
+```{r ACF PACF}
+Aux <- acf2(Emp)
+```
+L'autocorrélograme montre une autocorrélation au Lag 1 proche de 1 diminuant lentement avec le temps. Sachant que les autocorrélation décrivent dans quelle mesure la valeur actuelle est liée à ses valeurs passées, nous pouvons conclure que la valeur actuelle est fortement dépendante de ses valeurs antérieures. <br/><br/>
+ Ce qui semble indiqué la présence d'une tendance du fait que l’autocorrelogramme simple d’un processus non stationnaire est celui d’un AR(1) avec $\delta$ proche de 1.
+
+L'autocorrélogramme partiel permet de déterminer les autocorrélation des résidus (soit ce qui subsiste après élimination des effets expliqué dans l'ACF). Les autocorrélations partielles sont non-significatives à partir du Lag 2. Ce qui implique que la valeur actuelle dépend en grande majorité des valeurs passées (cf ACF) et très peu des bruits blancs (Choc).
+
+Ces deux autocorrélogrammes semble indiquer la présence d'une non-stationnarité mais ne nous permettent pas de déterminer le type de non stationnarité. <br/>
+Ainsi, l'analyse graphique nous conforte dans le fait qu'une tendance se cache potentiellement dans nos données. Ce qui semble tout à fait raisonnable d'un point de vue économique. Nous allons donc vérifier cela avec le test de la racine unitaire.<br/><br/>
+
+#### Test de stationnarité
+
+```{r Test Dickey-Fuller unit root test}
+library(astsa)
+test.df <- ur.df(Emp, type = "trend", lags = 2)
+summary(test.df)
+```
+Le "Dickey-Fuller unit root test" a pour hypothèse nulle la présence d'une racine unitaire, soit une non-staionnarité de type stochastique.
+
+
+Le test de la racine unitaire nous indique la présence d'une intégration, d'une tendance ainsi que d'une constante.
+
+- En effet les paramètres de ces trois composantes sont significativement différents de 0.
+
+A noter que nous implémentons un lag 2 basé sur l'analyse graphique de l'auto-corrélogramme partiel. En effet, on peut voir que les autocorrélations partielles ne sont plus significatives justement à partir de ce deuxième lag.
+En revanche la différentielle au lag 2 n'est pas significative. Cela nous indique dans le fait que l'ordre de notre modèle sera sûrement 1. Si l'on compare les valeurs du test statistic aux valeurs critiques, nous voyons qu'elles sont significativements différentes de 0 à 1%, 5% et 10% de risque. Il est donc statistiquement significatif d'expliquer la valeur présente par la valeur antérieure, une constante et une tendance. <br/><br/>
+
+#### Transformation dans le but de stationariser la série
+
+Cette annalyse graphique et le test de la racine unitaire nous motive à différentier le logarithme de l'emploi pour stationnariser la série. <br/>
+On crée donc un processus différencié d'ordre 1.
+
+- Il nous reste maintenenat à vérifier la non stationnarité de cette nouvelle variable.
+
+```{r Graph.DiffLog}
+library(astsa)
+ts.plot(na.omit(dlogEmp))
+Aux <- acf2(dlogEmp)
+```
+Une fois le logarithme de l'emploi différencié, la série semble se comporter (d'un point de vue graphique tout du moins) comme une série stationnaire. <br/> En effet, le graphique de la série semble montrer une variable gravitant autour d'un point (sa moyenne). Et les autocorrélogramme simple et partiel montre des autocorrélations (simples et partielles) non significative à partir du Lag 2. Ainsi, elles s'annulent rapidement, toujours à 5% de risque d'erreur.
+
+- Sachant que les autocorrélation décrivent dans quelle mesure la valeur actuelle est liée à ses valeurs passées, nous pouvons conclure que la différence du log de la  valeur actuelle et de sa valeur passé ne sont pas significativement corrélé à un Lag supérieur à 1.
+
+De plus, il ne semble pas se dégager de tendance sinusoïdale particulière sur le corrélogramme du fait qu'au dessus du Lag 1 ils sont significativement égal à 0.
+A ce stage de l'analyse, un modèle MA(1) semble ainsi représenter une piste intéressante.
+Il faut néanmoins garder à l'esprit qu'il est très dur de dicerner graphiquement la pertinence de l'utilisation d'un modèle ARMA, basé uniquement sur l'anlayse des ACf et PACF. Il ne faut donc pas totalement rejeter l'hypothèse d'un model ARMA.
+
+### Ordre d'intégration
+
+Une série temporelle est dite intégrée d'ordre d, que l'on note I(d), si la série obtenue après différenciations est stationnaire. <br/> Comme vu précédemment, il semble que la série soit stationnaire après une seule différention, la série serait donc intégré d'ordre 1.
+
+### EACF
+
+Pour affiner notre analyse, nous réalisons un test proposé par Tsay et Tiao (1984), basé sur l'EACF : Extended AutoCorrelation Function.
+A noter qu’il n’y a pas de différenciation possible pour la premier valeure donc nous ajoutons [-1].
+
+```{r EACF}
+library(TSA)
+eacf(dlogEmp[-1])
+```
+L'étude de la matrice de significativité semble confirmer notre intuition qu'un modèle MA(1) serait adéquate pour retranscrire la dynamique de la série. <br/>
+En effet, on peut voir qu'a partir du 2eme coefficient de la première ligne qu'un triangle de O se forme. <br/>
+La nécessité d'un triangle s'expliquant de par le fait que pour un ARMA(p,q) si l’on applique la procédure en supposant un ARMA(p+1,q), alors c’est l’autocorrélation d’ordre q+2 qui va s’annuler.
+
+Avec un raisonnement similaire, on remarque qu'un modèle AR(2) serait également approprié. Néanmoins on préferera la première solution car plus parcimonieuse. D'autant plus que les études graphiques précédentes n'allaient pas dans le sens d'un AR(2)
+
+Maintenant que nous avons essayer de déterminer p & q de notre modèle, nous pouvons passer à l'estimation de ce dernier.
+
+## Estimation
+
+```{r}
+library(forecast)
+ARMA01 <- Arima(dlogEmp[-1],order=c(0,0,1),
+                include.constant = TRUE, method="CSS")
+library(pander)
+pander(ARMA01,style="rmarkdown")
+```
+
+Ici “CSS” désigne les MC conditionnels.<br/>
+On peut aussi utiliser “ML” ou “CSS-ML”, c’est-à-dire CSS dans une première étape puis MV en prenant comme point de départ les valeurs estimées par CSS.<br/>
+En effets sur une série très grande, l’effet du conditionnement s’efface :
+
+- L’estimateur devient alors asymptotiquement le même que pour le MV non conditionnel
+
+Afin d'assurer notre raisonnement, nous essayons également avec cette deuxième méthode.
+
+```{r}
+library(forecast)
+ARMA01 <- Arima(dlogEmp[-1],order=c(0,0,1),
+                include.constant = TRUE, method="CSS-ML")
+library(pander)
+pander(ARMA01,style="rmarkdown")
+```
+
+Nous obtenons comme attendu des résultats sensiblement équivalent.
+
+Nous pouvons faire plusieurs remarques sur ce modèle.
+
+Tout d'abord, nous avons inclu une constante. Il est en effet important de toujours inculure une constante, quitte à l'enlever ensuite si cette dernière n'est pas significative, sous peine de quoi nous pourrions fortement fausser nos estimations.<br/>
+Cela nous amène à notre deuxième remarque, en étudiant l'erreur standard et la valeur du coefficient on peut voir que notre constante ainsi que notre premier coefficient sont significatifs. En effet, si l'on prend la méthode CSS : 0,3954 > 2* 0,1036 et 0.01653 > 2*0.005587.
+
+- Ce qui nous apporte une confirmation supplémentaire (mais non-suffisante) quant à la pertinence de notre choix de modèle.
+
+Maintenante que notre modèle est estimé, nous pouvons avancer sur la vérification de la validité de notre modèle.
+
+## Vérification
+
+Dans un premier temps, nous allons vérifier que les polynomes des parties AR et MA sont bien inversible. <br/>
+En effet, avec la méthode CSS, il est possible d’obtenir des coefficients estimés qui ne respectent pas les conditions de stationnarité.
+
+Pour vérifier la stationnarité de notre modèle, on doit donc s'assurer de son inversabilité, ie que les racines de notre polynomes existent.
+
+- Pour cela nous utilisons la fonctions "Autoplot"
+
+```{r Autoplot}
+autoplot(ARMA01)
+```
+Graphiquement, nous remarquons aisément que nos racines (unique ici car dans le cas d'un MA(1)) sont comprises dans le cercle unité, et nous pouvons d'ailleurs noter qu'elle n'est pas situé à proximité immédiate des bords du cercle. Ce qui, dans le cas contraire, aurait put nous indiqué une série non stationnaire et/ou mal différencié.<br/>
+
+- Ce test nous apporte donc un argument supplémentaire dans le choix de notre modèle.
+
+Cependant, il n'est pas nécessaire de différencier la série et ensuite d’estimer le modèle ARIMA, on peut effectuer l’estimation directement.
+
+Pour cela nous utilisons la commande Arima.
+
+```{r}
+ARIMA01 <- Arima(log(Emp)[-1], order=c(0,1,1),
+                    include.constant=TRUE, method="CSS")
+pander(ARIMA01, style="rmarkdown")
+```
+
+```{r}
+autoplot(ARIMA01)
+```
+Nous obtenons en effet des résultats similaires, l'analyse est donc la même. <br/>
+A noter que nous utiliserons désormais ce modèle ARIMA avec log(emp) en lieu et place du modèle ARMA avec difflog(emp).
+
+- Jusque ici, dans les différentes étapes de vérification nous nous sommes donc assurés que nos coéfficients étaient significatifs et notre polynôme inversible.
+
+Il n'est pas réellement possible de rendre notre modèle plus parcimonieux, ce dernier ne possédant déja qu'un unique coefficient, constante non-inclue.
+
+Nous allons néanmoins vérifier que l'introduction d'un lag supplémentaire ne semble pas nécessaire.
+
+Pour cela nous modélisons donc ARMA (p+1, q) ainsi que ARMA (p, q+1)
+
+Car en effet on ne vérifie pas l'introduction d'un lag simultané pour nos parties AR et MA car, si le processus est ARMA(p,q), les paramètres d’un processus ARMA(p+1,q+1) ne serait pas identifiés.
+
+```{r}
+ARIMA11 <- Arima(log(Emp),order=c(1,1,1),
+                 include.constant = TRUE, method="CSS-ML")
+pander(ARIMA11,style="rmarkdown")
+```
+
+On peut voir que notre coefficient AR est clairement non-significatifs. (2*0,25 > 0,06).<br/>
+De plus, notre coefficient AR qui auparavant était largement significatif, ne l'est plus que très légèrement.
+
+- Ce modèle ne semble donc pas approprié.
+
+```{r}
+ARIMA02 <- Arima(log(Emp),order=c(0,1,2),
+                 include.constant = TRUE, method="CSS-ML")
+pander(ARIMA02,style="rmarkdown")
+```
+
+Avec ce modèle, notre premier coefficient MA reste largement significatif (bien que légèrement moins que dans notre modèle proposé). Mais le deuxième coefficient MA est quant à lui largement non-significatif.
+
+- En conclusion, introduire un lag suplémetaire dans notre modèle n'est pas judicieux, et cela nous conforte dans la pertinence de notre modèle proposé.
+
+Afin de terminer la vérification de notre modèle, on se tourne désormais vers l'analyse des résidus de ce dernier.
+Plus précisemment, nous :
+- Vérifions la série des résidus et ses autocorrélations
+- Opérons un test de bruit blanc
+- Vérifions également si les résidus sont gaussiens. Cela n’est pas nécessaire pour la validité du modèle, mais est utile pour la prévision.
+
+```{r Résidus}
+library(forecast)
+checkresiduals(ARIMA01)
+```
+
+On peut tout d'abord remarquer que le modèle semble expliquer la dynamique des données, les résidus ne présentent pas d'autocorrélation significative.
+
+En outre, on peut voir que la p-value de notre Ljung Test est égale a 0,4401 et donc bien supérieur à 0,05. Ainsi on ne peut pas rejeter l'hypothèse que toutes les autocorrélations jusqu'au lag 10 sont égales à 0.
+
+Cela semble donc confirmer que notre modèle explique l'entièreté de la dynamique de la série étudiée. Soit que nous avons extrait toute l'explication possible sur la variabilité de nos données.
+
+Pour compléter notre anlayse sur la comportement des innovations, nous implémentons un QQ plot
+
+```{r}
+qqnorm(residuals(ARIMA01), col = "blue")
+qqline(residuals(ARIMA01), col = "red")
+```
+
+Ainsi, les innovations semblent bien gaussiennes, bien que les extremités s'eloignent assez distinctement de la ligne, laissant supposer que le pouvoir de prévision de notre modèle comportera quelques problèmes.
+
+Si plusieurs modèles avaient passé ces différentes étapes de vérification, il aurait été possible de les comparer en utilisant des critères, tels que l'AIC ou bien le BIC, ce n'est pas le cas ici, et donc non-nécessaire.
+
+Notre modele est donc :
+
+> $\delta$Log(Employment_t) = $\mu$ + $\epsilon_t$ + $\theta\epsilon_{t-1}$
+
+> Soit : 0,01653 + $\epsilon_t$ + 0.3954$\epsilon_{t-1}$
+
+## Prévision
+
+Nous pouvons maintenant utiliser notre modèle pour calculer des prévisions jusqu‘à un horizon h avec des bandes de confiance.
+
+```{r}
+fARIMA21 <- forecast(ARIMA01,h=20)
+autoplot(fARIMA21)
+```
+Nous voyons que la bande de confiance augmente avec le temps, ainsi notre modèle prédictif est de moins en moins efficace au fur et à mesure que l'année de prédiction s'éloigne de la valeur actuelle ce qui est totalement logique. <br/> A noter que cette bande de confiance est quelque peu large ce qui confirme notre analyse précédente, basé sur la distribution des résidus, que le pouvoir de prédiction de notre modèle est mesuré.
+
+ - En conclusion, l'emploi devrait donc continuer d'augmenter ce qui semble logique étant donnée que nous avons décelé une tendance croissante dans notre série de données.
+
+
+# Question 2 : Modèle pour la série "Employment"
+
+Nous avons décidé de prendre la variable Gnp.n soit le Produit National Brut (PNB). Contrairement au PIB,  qui mesure la
+ richesse produite par l'ensemble des opérateurs et personnes résidant sur un territoire précis, le PNB est calculé en
+ fonction des ressortissants d'un pays, indépendamment de leur lieu de résidence. <br/>Il calcule la richesse créée
+ par l'ensemble des resortissants d'un pays qu'ils soit sur ce pays ou à l'étranger.  Il calcule donc la richesse créée
+ par un peuple plutot que celle créée par une nation.
+
+De plus nous avons dédcider de le prendre en valeur nominale et non réelle. En effet, la valeur nominal inclue la
+variation des prix (à la hausse de l'inflation, à la baisse de la déflation). <br/> Sachant que la mesure nominale reste
+ la mesure de référence pour les données de long terme et que nous souhaitons analyser cette série sur une période de
+ temps relativement longue (de 1909 à 10970 en excluant les NA) cette mesure nous semble idéale. En effet, il faudra
+ bien évidement accepter qu'une part non négligeable de la variation du PNB sera du à la variation des prix et que notre
+ modèle ne pourra l'expliquer.
+
+ Avant toute estimation du modèle nous devons veiller à ce que la série soit stationnaire. En effet, pour capturer
+ l'essentiel de la dynamique et ainsi pouvoir faire des prédictions réalistes le futur doit se comporter de la même
+  manière que le passé c'est à dire que ses propriétés statistiques ne varient pas dans le temps.
+
+
+  En analysant les données, on peut voir que la série semble s'inscrire comme une processus stationnaire autour d'une tendance à la hausse.
+   En effet, le graphique montre que le PNB nominal augmente au fur et à mesure du temps. <br/>
+   Cela  semble logique d'un point de vu économique du fait que nous savons que le monde connait une croissance continu.
+   La production des ressortissants nationnaux augmente donc au fur et à mesure du temps.
+
+ De plus l'études des autocorrélaiton simple montre qu'elles sont proches de 1 au Lag 1 et diminue lentement jusqu'à la non-significativité, au lag 14.
+ Sachant que les autocorrélation décrivent dans quelle mesure la valeur actuelle est liée à ses valeurs passées, nous pouvons conclure
+que la valeur actuelle est fortement dépendante de ses valeurs antérieurs jusu'à 14 ans en arrière.
+
+- Cela semble indiquer la présence d'une tendance.
+
+De plus, l'autocorrélogramme partiel, soit ce qui permet de déterminer la corrélation de ce qui subsiste après élimination
+des effets expliqué par les valeurs précédantes, montre des autocorrélations partielles non significatives à partir du Lag 2.
+
+- Ce qui implique que la valeur actuelle dépend en grande majorité des valeurs passées et très peu des chocs antérieurs.
+
+Comme c'est souvent le cas pour les séries économiques décrivant des variables réelles avec tendances, on crée donc un processus différencié d'ordre 1. Et on transforme notre variable en log avant différentiation. Cela dans le but de stationnariser notre série, sa variance.
+
+Une fois la transformation réalisée, l'analyse graphique semble montrer une série stationnaire. En effet, le graphique de la série semble montrer une variable gravitant autour de sa moyenne. Et les autocorrélogramme simple et partiel montre des autocorrélations (simples et partielles) non-significatives à partir du Lag 2. <br/> Exception faite de l'autocorrélation partielle au Lag 12 mais qui peut être du au fait des 5% d'erreur. Une intéprétation possible, si on ne considère pas les 5% de risque d'erreur, est qu'un choc important a eu lieu il y a 12 ans et qu'il impacte encore aujourd'hui la valeur actuelle. Si on regarde l'histoire de nos donnée on se rend compte que 12 ans avant soit en 1958 aucun choc semble agiter l'économie. Il est donc plus probable que cela soit du à des erreurs d'estimations.
+
+ *Donc la valeur présente transphormée ne semble plus être dépendante de ces valeurs antérieurs ce qui sous-entend que nous avons stationnarisé la série*
+
+Afin de trouver le modèle adéquate nous implémentons les Extended AutoCorrelation Function. Celle ci semble nous indiquer qu'un moving average d'ordre 1 explique au mieux la dynamique de notre série. Il nous reste maintenant à l'estimer et à le vérifier.
+
+Nous pouvons estimer notre modèle par : $\delta$Log(Employment_t) = $\mu$ + $\epsilon_t$ + $\theta\epsilon_{t-1}$ = 0,05441 + $\epsilon_t$ + 0.4368$\epsilon_{t-1}$
+
+
+
+Après une série de test comprennant la significativité des coefficiants, l'inversibilité du polynôme et la normalité
+des résidus, **nous pouvons conclure que le modèle sélectionné, un  semblé expliqué en totalité la dynamique de la série**.
+
+## Code
+
+```{r}
+GnpN <- na.omit(nporg$gnp.n)
+dlogGnpN <- diff(na.omit(log(GnpN)))
+```
+
+
+```{r}
+ts.plot(GnpN)
+```
+
+```{r}
+Aux <- acf2(GnpN)
+```
+
+```{r}
+library(astsa)
+test.df <- ur.df(GnpN, type = "trend", lags = 2)
+summary(test.df)
+```
+
+```{r}
+library(astsa)
+ts.plot(na.omit(dlogGnpN))
+Aux <- acf2(dlogGnpN)
+```
+
+```{r}
+library(TSA)
+eacf(dlogGnpN[-1])
+```
+
+```{r}
+library(forecast)
+ARMA01 <- Arima(dlogGnpN[-1],order=c(0,0,1),
+                include.constant = TRUE, method="CSS")
+library(pander)
+pander(ARMA01,style="rmarkdown")
+```
+
+```{r}
+library(forecast)
+ARMA01 <- Arima(dlogGnpN[-1],order=c(0,0,1),
+                include.constant = TRUE, method="CSS-ML")
+library(pander)
+pander(ARMA01,style="rmarkdown")
+```
+
+```{r}
+autoplot(ARMA01)
+```
+
+```{r}
+ARIMA01 <- Arima(log(GnpN)[-1], order=c(0,1,1),
+                    include.constant=TRUE, method="CSS")
+pander(ARIMA01, style="rmarkdown")
+```
+
+```{r}
+autoplot(ARIMA01)
+```
+
+```{r}
+ARIMA11 <- Arima(log(GnpN),order=c(1,1,1),
+                 include.constant = TRUE, method="CSS-ML")
+pander(ARIMA11,style="rmarkdown")
+```
+
+```{r}
+ARIMA02 <- Arima(log(GnpN),order=c(0,1,2),
+                 include.constant = TRUE, method="CSS-ML")
+pander(ARIMA02,style="rmarkdown")
+```
+
+```{r}
+library(forecast)
+checkresiduals(ARIMA01)
+```
+
+```{r}
+qqnorm(residuals(ARIMA01), col = "blue")
+qqline(residuals(ARIMA01), col = "red")
+```
+
+
+```{r}
+fARIMA21 <- forecast(ARIMA01,h=20)
+autoplot(fARIMA21)
+```
